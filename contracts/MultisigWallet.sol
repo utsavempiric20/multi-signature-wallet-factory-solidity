@@ -1,26 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "hardhat/console.sol";
+
 contract MultisigWallet {
     error MultisigWallet__TransferFailed();
 
     struct Transaction {
-        uint24 transactionId;
+        bytes4 transactionId;
+        address from;
         address to;
         uint256 amount;
         bool isExecuted;
     }
 
     address[] owners;
+
     uint256 numberOfApprovalRequired;
     uint256 AMOUNT_TO_WEI = 10 ** 18;
 
-    mapping(address => mapping(uint24 => Transaction)) ownerTransaction;
-    mapping(address => mapping(uint24 => bool)) approvelsOfOwners;
-    mapping(address => uint24[]) transactionsHistory;
-    mapping(uint24 => bool) transactionExist;
+    mapping(bytes4 => Transaction) ownerTransaction;
+    mapping(address => bytes4[]) transactionsHistory;
+    mapping(address => mapping(bytes4 => bool)) approvelsOfOwners;
+    mapping(bytes4 => uint256) approverCount;
+    mapping(bytes4 => bool) transactionExist;
 
-    modifier isApproved(uint24 _transactionId, address approver) {
+    modifier isNotApproved(bytes4 _transactionId, address approver) {
         require(
             !approvelsOfOwners[approver][_transactionId],
             "Already Approved."
@@ -28,23 +33,22 @@ contract MultisigWallet {
         _;
     }
 
-    modifier isTransactionExist(uint24 _transactionId) {
+    modifier isTransactionExist(bytes4 _transactionId) {
         require(transactionExist[_transactionId], "Transaction dosen't exist.");
         _;
     }
 
-    modifier isTransactionExecuted(uint24 _transactionId, address owner) {
+    modifier isTransactionExecuted(bytes4 _transactionId, address owner) {
         require(
-            !ownerTransaction[owner][_transactionId].isExecuted,
+            !ownerTransaction[_transactionId].isExecuted,
             "Transaction already Executed."
         );
         _;
     }
 
-    modifier isTotalApprovalMeetRequired(uint24 _transactionId) {
+    modifier isTotalApprovalMeetRequired(bytes4 _transactionId) {
         require(
-            getTotalApprovalsOfTransaction(_transactionId) >=
-                numberOfApprovalRequired,
+            approverCount[_transactionId] >= numberOfApprovalRequired,
             "Number of Approvals are not meet."
         );
         _;
@@ -52,91 +56,108 @@ contract MultisigWallet {
 
     constructor(address[] memory _owners) {
         require(_owners.length > 0, "Owner should not be 0.");
-        for (uint256 i = 0; i < _owners.length; i++) {
-            owners.push(_owners[i]);
-        }
+        owners = _owners;
         numberOfApprovalRequired = (_owners.length / 2) + 1;
     }
+
+    receive() external payable {}
 
     function createTransaction(
         address _to,
         uint256 _amount,
-        address owner
-    ) public payable returns (uint24) {
+        address _owner
+    ) public returns (bytes4) {
         uint256 payableAmount = _amount * AMOUNT_TO_WEI;
-        require(msg.value == payableAmount, "Amount equal to payableAmount");
-        uint24 _transactionId = uint24(
-            uint256(
-                keccak256(abi.encodePacked(_to, payableAmount, block.timestamp))
-            )
+        require(
+            payableAmount <= address(this).balance,
+            "Insufficiant Balance in wallet."
+        ); //
+        bytes4 _transactionId = bytes4(
+            keccak256(abi.encodePacked(_to, payableAmount, block.timestamp))
         );
 
         Transaction memory _transaction = Transaction({
             transactionId: _transactionId,
+            from: _owner,
             to: _to,
             amount: payableAmount,
             isExecuted: false
         });
 
-        ownerTransaction[owner][_transactionId] = _transaction;
-        transactionsHistory[owner].push(_transactionId);
+        ownerTransaction[_transactionId] = _transaction;
+        transactionsHistory[_owner].push(_transactionId);
         transactionExist[_transactionId] = true;
+        approvelsOfOwners[_owner][_transactionId] = true;
+        approverCount[_transactionId]++;
         return _transactionId;
     }
 
-    function approveTranscationByOwner(
-        uint24 _transactionId,
+    function approveTranscation(
+        bytes4 _transactionId,
         address approver
     )
         public
         isTransactionExist(_transactionId)
-        isApproved(_transactionId, approver)
+        isNotApproved(_transactionId, approver)
     {
         approvelsOfOwners[approver][_transactionId] = true;
-    }
-
-    function recieveTransaction(
-        uint24 _transactionId,
-        address owner
-    )
-        public
-        payable
-        isTransactionExist(_transactionId)
-        isTransactionExecuted(_transactionId, owner)
-        isTotalApprovalMeetRequired(_transactionId)
-    {
-        Transaction storage transaction = ownerTransaction[owner][
-            _transactionId
-        ];
-        transaction.isExecuted = true;
-
-        (bool success, ) = payable(transaction.to).call{
-            value: transaction.amount
-        }("");
-        if (!success) {
-            revert MultisigWallet__TransferFailed();
+        approverCount[_transactionId]++;
+        if (approverCount[_transactionId] >= numberOfApprovalRequired) {
+            require(
+                !ownerTransaction[_transactionId].isExecuted,
+                "Transaction already Executed."
+            );
+            Transaction storage transaction = ownerTransaction[_transactionId];
+            transaction.isExecuted = true;
+            (bool success, ) = payable(transaction.to).call{
+                value: transaction.amount
+            }("");
+            if (!success) {
+                revert MultisigWallet__TransferFailed();
+            }
         }
     }
 
+    // function receieveTransaction(bytes4 _transactionId, address owner)
+    //     internal
+    //     isTransactionExist(_transactionId)
+    //     isTransactionExecuted(_transactionId, owner)
+    //     isTotalApprovalMeetRequired(_transactionId)
+    // {
+    //     Transaction storage transaction = ownerTransaction[_transactionId];
+    //     transaction.isExecuted = true;
+    //     (bool success, ) = payable(transaction.to).call{
+    //         value: transaction.amount
+    //     }("");
+    //     if (!success) {
+    //         revert MultisigWallet__TransferFailed();
+    //     }
+
+    //     console.log("after pay Current contract address : ", address(this));
+    //     console.log(
+    //         "after pay Balance of current contract address : ",
+    //         address(this).balance
+    //     );
+    // }
+
     // Getter Functions
     function getTransaction(
-        uint24 _transactionId,
-        address owner
+        bytes4 _transactionId
     )
         public
         view
         returns (
-            uint24 transactionId,
+            bytes4 transactionId,
+            address from,
             address to,
             uint256 amount,
             bool isExecuted
         )
     {
-        Transaction memory transactionOfUser = ownerTransaction[owner][
-            _transactionId
-        ];
+        Transaction memory transactionOfUser = ownerTransaction[_transactionId];
         return (
             transactionOfUser.transactionId,
+            transactionOfUser.from,
             transactionOfUser.to,
             transactionOfUser.amount,
             transactionOfUser.isExecuted
@@ -145,7 +166,7 @@ contract MultisigWallet {
 
     function getTransactionHistory(
         address owner
-    ) public view returns (uint24[] memory) {
+    ) public view returns (bytes4[] memory) {
         return transactionsHistory[owner];
     }
 
@@ -154,14 +175,14 @@ contract MultisigWallet {
     }
 
     function getTotalApprovalsOfTransaction(
-        uint24 _transactionId
+        bytes4 _transactionId
     ) public view returns (uint256) {
-        uint256 count = 0;
-        for (uint256 i = 0; i < owners.length; i++) {
-            if (approvelsOfOwners[owners[i]][_transactionId]) {
-                count++;
-            }
-        }
-        return count;
+        return approverCount[_transactionId];
+    }
+
+    function getWalletBalance(
+        address _walletAddress
+    ) public view returns (uint256) {
+        return _walletAddress.balance;
     }
 }

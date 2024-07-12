@@ -6,11 +6,11 @@ import "./MultisigWallet.sol";
 contract UsersFactory {
     MultisigWallet[] multisigWallets;
     mapping(MultisigWallet => address[]) ownersOfWallet;
-    uint256 AMOUNT_TO_WEI = 10 ** 18;
+    mapping(MultisigWallet => mapping(address => bool)) checkOwner;
 
     modifier onlyOwner(MultisigWallet _multisigWallet) {
         require(
-            checkOwner(_multisigWallet, msg.sender),
+            checkOwner[_multisigWallet][msg.sender],
             "Only Valid Owner can perform it."
         );
         _;
@@ -20,33 +20,24 @@ contract UsersFactory {
         MultisigWallet multisigWallet = new MultisigWallet(_owners);
         multisigWallets.push(multisigWallet);
         ownersOfWallet[multisigWallet] = _owners;
+        for (uint256 i = 0; i < _owners.length; i++) {
+            checkOwner[multisigWallet][_owners[i]] = true;
+        }
     }
 
     function createTransaction(
         MultisigWallet _multisigWallet,
         address _to,
         uint256 _amount
-    ) public payable onlyOwner(_multisigWallet) returns (uint24) {
-        return
-            _multisigWallet.createTransaction{value: msg.value}(
-                _to,
-                _amount,
-                msg.sender
-            );
+    ) public onlyOwner(_multisigWallet) returns (bytes4) {
+        return _multisigWallet.createTransaction(_to, _amount, msg.sender);
     }
 
     function approveTranscationByOwner(
         MultisigWallet _multisigWallet,
-        uint24 _transactionId
+        bytes4 _transactionId
     ) public onlyOwner(_multisigWallet) {
-        _multisigWallet.approveTranscationByOwner(_transactionId, msg.sender);
-    }
-
-    function recieveTransaction(
-        MultisigWallet _multisigWallet,
-        uint24 _transactionId
-    ) public payable onlyOwner(_multisigWallet) {
-        _multisigWallet.recieveTransaction(_transactionId, msg.sender);
+        _multisigWallet.approveTranscation(_transactionId, msg.sender);
     }
 
     // Getter
@@ -64,39 +55,41 @@ contract UsersFactory {
         return multisigWallets;
     }
 
-    function checkOwner(
-        MultisigWallet _multisigWallet,
-        address _owner
-    ) internal view returns (bool) {
-        address[] memory owners = ownersOfWallet[_multisigWallet];
-        for (uint256 i = 0; i < owners.length; i++) {
-            if (_owner == owners[i]) {
-                return true;
-            }
-        }
-        return false;
-    }
+    // function checkOwner(MultisigWallet _multisigWallet, address _owner)
+    //     internal
+    //     view
+    //     returns (bool)
+    // {
+    //     address[] memory owners = ownersOfWallet[_multisigWallet];
+    //     for (uint256 i = 0; i < owners.length; i++) {
+    //         if (_owner == owners[i]) {
+    //             return true;
+    //         }
+    //     }
+    //     return false;
+    // }
 
     function getTransaction(
         MultisigWallet _multisigWallet,
-        uint24 _transactionId
+        bytes4 _transactionId
     )
         public
         view
         onlyOwner(_multisigWallet)
         returns (
-            uint24 transactionId,
+            bytes4 transactionId,
+            address from,
             address to,
             uint256 amount,
             bool isExecuted
         )
     {
-        return _multisigWallet.getTransaction(_transactionId, msg.sender);
+        return _multisigWallet.getTransaction(_transactionId);
     }
 
     function getTransactionHistory(
         MultisigWallet _multisigWallet
-    ) public view onlyOwner(_multisigWallet) returns (uint24[] memory) {
+    ) public view onlyOwner(_multisigWallet) returns (bytes4[] memory) {
         return _multisigWallet.getTransactionHistory(msg.sender);
     }
 
@@ -108,8 +101,14 @@ contract UsersFactory {
 
     function getTotalApprovalsOfTransaction(
         MultisigWallet _multisigWallet,
-        uint24 _transactionId
+        bytes4 _transactionId
     ) public view returns (uint256) {
         return _multisigWallet.getTotalApprovalsOfTransaction(_transactionId);
+    }
+
+    function getWalletBalance(
+        MultisigWallet _multisigWallet
+    ) public view returns (uint256) {
+        return _multisigWallet.getWalletBalance(address(_multisigWallet));
     }
 }
