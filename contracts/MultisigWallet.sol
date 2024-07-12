@@ -71,7 +71,7 @@ contract MultisigWallet {
         require(
             payableAmount <= address(this).balance,
             "Insufficiant Balance in wallet."
-        ); //
+        );
         bytes4 _transactionId = bytes4(
             keccak256(abi.encodePacked(_to, payableAmount, block.timestamp))
         );
@@ -117,28 +117,6 @@ contract MultisigWallet {
             }
         }
     }
-
-    // function receieveTransaction(bytes4 _transactionId, address owner)
-    //     internal
-    //     isTransactionExist(_transactionId)
-    //     isTransactionExecuted(_transactionId, owner)
-    //     isTotalApprovalMeetRequired(_transactionId)
-    // {
-    //     Transaction storage transaction = ownerTransaction[_transactionId];
-    //     transaction.isExecuted = true;
-    //     (bool success, ) = payable(transaction.to).call{
-    //         value: transaction.amount
-    //     }("");
-    //     if (!success) {
-    //         revert MultisigWallet__TransferFailed();
-    //     }
-
-    //     console.log("after pay Current contract address : ", address(this));
-    //     console.log(
-    //         "after pay Balance of current contract address : ",
-    //         address(this).balance
-    //     );
-    // }
 
     // Getter Functions
     function getTransaction(

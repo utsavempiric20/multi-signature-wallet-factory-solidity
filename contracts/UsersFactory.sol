@@ -55,20 +55,6 @@ contract UsersFactory {
         return multisigWallets;
     }
 
-    // function checkOwner(MultisigWallet _multisigWallet, address _owner)
-    //     internal
-    //     view
-    //     returns (bool)
-    // {
-    //     address[] memory owners = ownersOfWallet[_multisigWallet];
-    //     for (uint256 i = 0; i < owners.length; i++) {
-    //         if (_owner == owners[i]) {
-    //             return true;
-    //         }
-    //     }
-    //     return false;
-    // }
-
     function getTransaction(
         MultisigWallet _multisigWallet,
         bytes4 _transactionId
