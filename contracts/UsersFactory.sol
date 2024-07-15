@@ -67,7 +67,8 @@ contract UsersFactory {
             address from,
             address to,
             uint256 amount,
-            bool isExecuted
+            bool isExecuted,
+            uint256 transactionTime
         )
     {
         return _multisigWallet.getTransaction(_transactionId);
